@@ -1,0 +1,46 @@
+name: Update repo count badge
+on:
+  schedule:
+    - cron: '0 6 * * *'   # Her sabah 09:00 Türkiye saati
+  workflow_dispatch:
+
+jobs:
+  update-badge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Query GitHub for repo counts
+        id: counts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const login = process.env.GITHUB_REPOSITORY.split('/')[0];
+            const query = `
+              query($login:String!){
+                user(login:$login){
+                  pub: repositories(privacy: PUBLIC, ownerAffiliations: OWNER) { totalCount }
+                  pri: repositories(privacy: PRIVATE, ownerAffiliations: OWNER) { totalCount }
+                }
+              }`;
+            const res = await github.graphql(query, { login });
+            const pub = res.user.pub.totalCount;
+            const pri = res.user.pri.totalCount;
+            const total = pub + pri;
+            const fs = require('fs');
+            fs.mkdirSync('badge', { recursive: true });
+            fs.writeFileSync('badge/repos.json', JSON.stringify({
+              schemaVersion: 1,
+              label: 'Repositories',
+              message: `${total} total (${pub} public)`,
+              color: '00BFFF'
+            }));
+      - name: Commit & Push badge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add badge/repos.json
+          git commit -m "update: repo count" || echo "No change"
+          git push
